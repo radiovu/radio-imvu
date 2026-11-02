@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rádio IMVU</title>
+<style>
+  :root{
+    --bg:#0b0817; --panel:#140f2b; --panel2:#1c1540;
+    --purple:#a855f7; --purple-d:#6d28d9; --cyan:#7dd3fc; --cyan-d:#38bdf8;
+    --text:#ecebff; --muted:#9a95c4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:var(--text);
+    background:radial-gradient(1200px 600px at 10% -10%,#2a1260 0%,transparent 60%),
+               radial-gradient(900px 500px at 100% 0%,#0c3a5a 0%,transparent 55%),var(--bg);
+    min-height:100vh}
+  header{padding:18px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+    border-bottom:1px solid #2a2058;background:rgba(11,8,23,.7);backdrop-filter:blur(6px);position:sticky;top:0;z-index:5}
+  h1{margin:0;font-size:22px;flex:1;letter-spacing:1px;
+    background:linear-gradient(90deg,var(--purple),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 0 18px rgba(168,85,247,.35)}
+  .namebox{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
+  input{padding:12px 14px;border-radius:10px;border:1px solid #33286a;background:#0f0a24;color:var(--text);font-size:15px;outline:none}
+  input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(125,211,252,.18)}
+  main{max-width:960px;margin:0 auto;padding:18px;display:grid;gap:18px}
+  .card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid #2d2266;border-radius:16px;padding:18px;
+    box-shadow:0 0 0 1px rgba(125,211,252,.05),0 10px 30px rgba(0,0,0,.45)}
+  .card h2{margin:0 0 12px;font-size:13px;letter-spacing:2px;text-transform:uppercase;color:var(--cyan)}
+  button{padding:12px 16px;border-radius:10px;border:0;font-size:15px;cursor:pointer;font-weight:600;color:#fff;
+    background:linear-gradient(135deg,var(--purple),var(--purple-d));transition:transform .08s,box-shadow .15s}
+  button:hover{box-shadow:0 0 16px rgba(168,85,247,.6)}
+  button:active{transform:scale(.97)}
+  button.sec{background:#241a52;border:1px solid #3b2d82;color:var(--cyan)}
+  button.sec:hover{box-shadow:0 0 14px rgba(125,211,252,.35)}
+  button.ghost{background:transparent;border:1px solid #3b2d82;color:var(--muted);padding:6px 10px}
+  .steps{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .step{flex:1;min-width:150px;background:#0f0a24;border:1px solid #2d2266;border-radius:12px;padding:10px 12px;font-size:13px;color:var(--muted)}
+  .step b{color:var(--cyan);display:block;margin-bottom:2px}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row input{flex:1;min-width:180px}
+  .hint{color:var(--muted);font-size:13px;margin-top:8px}
+  #msg{font-size:14px;min-height:20px;margin-top:8px}
+  #msg.err{color:#ff9bb5} #msg.ok{color:#7ef0b8}
+  .item{display:flex;gap:12px;align-items:center;padding:10px;border-radius:12px;border:1px solid transparent}
+  .item img{width:96px;height:54px;object-fit:cover;border-radius:8px;background:#0f0a24}
+  .item .t{flex:1;min-width:0;font-size:14px}
+  .item .t span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .item small{color:var(--muted)}
+  .item.res{cursor:pointer;background:#120d2b}
+  .item.res:hover{border-color:var(--cyan);box-shadow:0 0 14px rgba(125,211,252,.25)}
+  .item.res .plus{color:var(--cyan);font-weight:700}
+  .item.now{background:linear-gradient(90deg,rgba(168,85,247,.25),rgba(125,211,252,.12));border-color:var(--purple);
+    box-shadow:0 0 18px rgba(168,85,247,.35)}
+  .badge{font-size:11px;letter-spacing:1px;color:#0b0817;background:var(--cyan);padding:2px 8px;border-radius:99px;font-weight:700;margin-right:6px}
+  .nowplaying{display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  #playerWrap{flex:1 1 360px;min-width:260px}
+  #player{width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;border:1px solid #3b2d82}
+  .info{flex:1 1 220px;min-width:200px}
+  #nowTitle{font-size:20px;font-weight:700;margin-bottom:4px}
+  #nowBy{color:var(--muted);font-size:14px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .empty{color:var(--muted);text-align:center;padding:18px;font-size:14px}
+  #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);opacity:0;
+    background:#1c1540;border:1px solid var(--cyan);color:var(--text);padding:12px 18px;border-radius:12px;
+    box-shadow:0 0 20px rgba(125,211,252,.4);transition:all .25s;z-index:20;font-size:14px}
+  #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+  @media(max-width:520px){.item img{width:72px;height:40px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ RÁDIO IMVU</h1>
+  <div class="namebox">Seu nome: <input id="name" placeholder="Como te chamam?" maxlength="30" style="width:170px"></div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1 · Peça sua música</h2>
+    <div class="steps">
+      <div class="step"><b>Passo 1</b>Digite o nome da música ou artista</div>
+      <div class="step"><b>Passo 2</b>Clique em Buscar e escolha o resultado</div>
+      <div class="step"><b>Passo 3</b>Ela entra no fim da fila e toca na sua vez</div>
+    </div>
+    <div class="row">
+      <input id="q" placeholder="🔍 Buscar música...  ou digite: ADD nome ou link">
+      <button id="searchBtn">🔍 Buscar</button>
+      <button id="addBtn" class="sec">＋ ADD</button>
+    </div>
+    <div class="hint">Dica: o comando <b>ADD</b> coloca direto na fila a primeira música encontrada, ou o link do YouTube que você colar.</div>
+    <div id="msg"></div>
+    <div id="results"></div>
+  </section>
+
+  <section class="card">
+    <h2>2 · Tocando agora</h2>
+    <div class="nowplaying">
+      <div id="playerWrap"><div id="player"></div></div>
+      <div class="info">
+        <div id="nowTitle">Nada tocando</div>
+        <div id="nowBy">Adicione uma música para começar.</div>
+        <div class="controls">
+          <button class="sec" onclick="cmd('prev')">⏮ Anterior</button>
+          <button class="sec" onclick="cmd('next')">⏭ Próxima</button>
+          <button class="sec" onclick="cmd('stop')">⏹ Parar</button>
+          <button class="sec" id="silentBtn" onclick="cmd('silent')">🔇 Silenciar</button>
+          <button class="ghost" onclick="if(confirm('Limpar toda a fila?'))cmd('clear')">🗑 Limpar fila</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>3 · Fila <span id="count" style="color:var(--muted)"></span></h2>
+    <div id="queue"></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+let state = {queue:[], current:0, silent:false};
+let player = null, playingId = null, apiReady = false;
+const $ = id => document.getElementById(id);
+$('name').value = localStorage.getItem('radioName') || '';
+$('name').onchange = () => localStorage.setItem('radioName', $('name').value);
+
+function onYouTubeIframeAPIReady(){
+  apiReady = true;
+  player = new YT.Player('player', {
+    width:'100%', height:'100%',
+    playerVars:{autoplay:1, playsinline:1},
+    events:{
+      onReady: () => sync(),
+      onStateChange: e => { if (e.data === YT.PlayerState.ENDED) cmd('next'); }
+    }
+  });
+}
+
+let toastTimer;
+function toast(t){
+  const el = $('toast'); el.textContent = t; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+function msg(t, cls){ const m = $('msg'); m.textContent = t || ''; m.className = cls || ''; }
+
+async function search(){
+  const q = $('q').value.trim(); if(!q) { msg('Digite o nome de uma música primeiro.', 'err'); return; }
+  msg('Buscando...');
+  try{
+    const r = await fetch('/api/search?q='+encodeURIComponent(q));
+    const data = await r.json();
+    if(data.error){ msg(data.error, 'err'); return; }
+    if(!data.length){ msg('Nada encontrado. Tente outro nome.', 'err'); return; }
+    msg('Clique na música que você quer adicionar:', 'ok');
+    $('results').innerHTML = '';
+    data.forEach(v => {
+      const d = document.createElement('div');
+      d.className = 'item res';
+      d.innerHTML = '<img src="'+v.thumb+'"><div class="t"><span></span></div><div class="plus">＋ Adicionar</div>';
+      d.querySelector('span').textContent = v.title;
+      d.onclick = () => add({videoId:v.videoId,title:v.title,thumb:v.thumb});
+      $('results').appendChild(d);
+    });
+  }catch(e){ msg('Erro de conexão com o servidor.', 'err'); }
+}
+
+async function add(body){
+  body.addedBy = $('name').value.trim() || 'Anônimo';
+  try{
+    const r = await fetch('/api/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const data = await r.json();
+    if(data.error){ msg(data.error, 'err'); return; }
+    msg(''); $('results').innerHTML=''; $('q').value='';
+    toast('✅ Música adicionada à fila!');
+    refresh();
+  }catch(e){ msg('Erro de conexão com o servidor.', 'err'); }
+}
+
+function addCommand(){
+  const t = $('q').value.trim(); if(!t){ msg('Digite ADD e o nome da música ou um link.', 'err'); return; }
+  add({text:t});
+}
+
+async function cmd(c, id){
+  const r = await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd:c,id})});
+  state = await r.json(); render();
+}
+
+async function refresh(){
+  try{ const r = await fetch('/api/queue'); state = await r.json(); render(); }catch(e){}
+}
+
+function render(){
+  const cur = state.queue[state.current];
+  $('nowTitle').textContent = cur ? cur.title : 'Nada tocando';
+  $('nowBy').textContent = cur ? 'adicionada por ' + cur.addedBy : 'Adicione uma música para começar.';
+  $('silentBtn').textContent = state.silent ? '🔊 Ativar som' : '🔇 Silenciar';
+  $('count').textContent = state.queue.length ? '(' + state.queue.length + ')' : '';
+
+  const box = $('queue'); box.innerHTML = '';
+  if(!state.queue.length){ box.innerHTML = '<div class="empty">A fila está vazia. Peça a primeira música lá em cima! 🎶</div>'; }
+  state.queue.forEach((v,i) => {
+    const d = document.createElement('div');
+    d.className = 'item' + (i === state.current ? ' now' : '');
+    d.innerHTML = '<img src="'+(v.thumb||'')+'"><div class="t"><span></span><small></small></div><button class="ghost" title="Remover">✕</button>';
+    const label = i === state.current ? '<span class="badge">TOCANDO</span>' : (i < state.current ? '' : '');
+    d.querySelector('span').innerHTML = label;
+    d.querySelector('span').appendChild(document.createTextNode(v.title));
+    d.querySelector('small').textContent = (i < state.current ? 'já tocou · ' : (i === state.current ? '' : 'na fila · ')) + 'adicionada por ' + v.addedBy;
+    d.querySelector('button').onclick = () => cmd('remove', v.id);
+    box.appendChild(d);
+  });
+  sync();
+}
+
+function sync(){
+  if(!apiReady || !player || !player.loadVideoById) return;
+  const cur = state.queue[state.current];
+  if(!cur){ if(playingId){ player.stopVideo(); playingId = null; } return; }
+  if(cur.id !== playingId){ playingId = cur.id; player.loadVideoById(cur.videoId); }
+  state.silent ? player.mute() : player.unMute();
+}
+
+$('searchBtn').onclick = search;
+$('addBtn').onclick = addCommand;
+$('q').addEventListener('keydown', e => {
+  if(e.key !== 'Enter') return;
+  /^add\s/i.test($('q').value) ? addCommand() : search();
+});
+
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+                  </html>
