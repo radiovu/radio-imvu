@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rádio IMVU - Player</title>
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#14121f;color:#eee;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;text-align:center}
+  #player{width:min(90vw,640px);aspect-ratio:16/9;background:#000;border-radius:10px}
+  #now{font-size:20px;font-weight:600;max-width:90vw}
+  #by{color:#aaa;font-size:14px}
+  #next{color:#bbb;font-size:14px}
+  #start{padding:14px 28px;font-size:18px;border:0;border-radius:10px;background:#7c5cff;color:#fff;cursor:pointer}
+  #status{color:#aaa;font-size:13px}
+</style>
+</head>
+<body>
+  <button id="start">▶ Ativar rádio</button>
+  <div id="player"></div>
+  <div id="now">Fila vazia</div>
+  <div id="by"></div>
+  <div id="next"></div>
+  <div id="status">Clique em "Ativar rádio" uma vez para o navegador liberar o som.</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+let state = {queue:[], current:0, silent:false};
+let player = null, apiReady = false, activated = false, playingId = null;
+const $ = id => document.getElementById(id);
+
+function onYouTubeIframeAPIReady(){
+  apiReady = true;
+  player = new YT.Player('player', {
+    width:'100%', height:'100%',
+    playerVars:{autoplay:1, playsinline:1, controls:0, rel:0},
+    events:{
+      onReady: () => sync(),
+      onStateChange: e => { if (e.data === YT.PlayerState.ENDED) advance(); }
+    }
+  });
+}
+
+async function advance(){
+  const r = await fetch('/api/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cmd:'next'})});
+  state = await r.json(); render();
+}
+
+async function refresh(){
+  try {
+    const r = await fetch('/api/queue');
+    state = await r.json();
+    render();
+  } catch(e){ $('status').textContent = 'Sem conexão com o servidor, tentando de novo...'; }
+}
+
+function render(){
+  const cur = state.queue[state.current];
+  const nxt = state.queue[state.current + 1];
+  $('now').textContent = cur ? cur.title : 'Fila vazia';
+  $('by').textContent = cur ? 'adicionada por ' + cur.addedBy : '';
+  $('next').textContent = nxt ? 'Próxima: ' + nxt.title : '';
+  sync();
+}
+
+function sync(){
+  if(!activated || !apiReady || !player || !player.loadVideoById) return;
+  const cur = state.queue[state.current];
+  if(!cur){ if(playingId){ player.stopVideo(); playingId = null; } return; }
+  if(cur.id !== playingId){ playingId = cur.id; player.loadVideoById(cur.videoId); }
+  state.silent ? player.mute() : player.unMute();
+}
+
+$('start').onclick = () => {
+  activated = true;
+  $('start').style.display = 'none';
+  $('status').textContent = 'Rádio ativa. Esta página segue a fila sozinha.';
+  sync();
+};
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
