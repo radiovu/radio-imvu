@@ -1,11 +1,14 @@
 const express = require('express');
 const path = require('path');
+const { spawn } = require('child_process');
+const ffmpegPath = require('ffmpeg-static');
 
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const YT_KEY = process.env.YOUTUBE_API_KEY || process.env.YT_KEY;
+const YTDLP = path.join(__dirname, 'yt-dlp_linux');
 
 // Estado compartilhado: uma fila unica para todos
 const state = { queue: [], current: -1, silent: false };
@@ -45,6 +48,107 @@ function extractVideoId(text) {
   const m = text.match(/(?:youtu\.be\/|v=|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/);
   return m ? m[1] : null;
 }
+
+// ---------- Stream MP3 ao vivo ----------
+const listeners = new Set();
+const streamStatus = { lastError: '', playingTitle: '' };
+let silenceBuf = Buffer.alloc(0);
+let killCurrent = () => {};
+let skipped = false;
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function broadcast(chunk) {
+  for (const res of listeners) res.write(chunk);
+}
+
+// 1 segundo de silencio em MP3, usado quando nao ha musica tocando
+function makeSilence() {
+  return new Promise(resolve => {
+    const f = spawn(ffmpegPath, ['-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
+      '-t', '1', '-f', 'mp3', '-b:a', '128k', 'pipe:1']);
+    const bufs = [];
+    f.stdout.on('data', d => bufs.push(d));
+    f.on('close', () => resolve(Buffer.concat(bufs)));
+    f.on('error', () => resolve(Buffer.alloc(0)));
+  });
+}
+
+// Toca uma musica: yt-dlp baixa o audio, ffmpeg converte para MP3 em tempo real
+function playTrack(track) {
+  return new Promise(resolve => {
+    let got = 0;
+    let err = '';
+    const yt = spawn(YTDLP, ['-f', 'bestaudio', '--no-playlist', '-o', '-', '--quiet',
+      'https://www.youtube.com/watch?v=' + track.videoId]);
+    const ff = spawn(ffmpegPath, ['-re', '-i', 'pipe:0', '-vn', '-f', 'mp3',
+      '-b:a', '128k', '-ar', '44100', '-ac', '2', 'pipe:1']);
+
+    yt.stderr.on('data', d => { err += d; });
+    ff.stdin.on('error', () => {});
+    yt.stdout.pipe(ff.stdin);
+    ff.stdout.on('data', d => { got += d.length; broadcast(d); });
+
+    killCurrent = () => {
+      try { yt.kill('SIGKILL'); } catch (e) {}
+      try { ff.kill('SIGKILL'); } catch (e) {}
+    };
+
+    yt.on('error', e => {
+      streamStatus.lastError = 'yt-dlp: ' + e.message;
+      try { ff.kill('SIGKILL'); } catch (x) {}
+    });
+    ff.on('error', e => {
+      streamStatus.lastError = 'ffmpeg: ' + e.message;
+      resolve();
+    });
+    ff.on('close', () => {
+      try { yt.kill('SIGKILL'); } catch (e) {}
+      if (!got && !skipped) streamStatus.lastError = (err || 'nenhum áudio recebido').slice(-400);
+      resolve();
+    });
+  });
+}
+
+async function streamLoop() {
+  silenceBuf = await makeSilence();
+  while (true) {
+    const track = state.queue[state.current];
+    if (track && listeners.size > 0) {
+      streamStatus.playingTitle = track.title;
+      skipped = false;
+      await playTrack(track);
+      streamStatus.playingTitle = '';
+      if (!skipped) {
+        state.current++; // terminou sozinha: vai para a proxima
+        await sleep(300);
+      }
+    } else {
+      broadcast(silenceBuf);
+      await sleep(1000);
+    }
+  }
+}
+streamLoop();
+
+app.get(['/stream', '/stream.mp3'], (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'audio/mpeg',
+    'Cache-Control': 'no-cache, no-store',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'icy-name': 'Radio IMVU'
+  });
+  listeners.add(res);
+  req.on('close', () => listeners.delete(res));
+});
+
+// Para ver o que esta acontecendo com o stream
+app.get('/api/stream-status', (req, res) => res.json({
+  listeners: listeners.size,
+  playing: streamStatus.playingTitle,
+  lastError: streamStatus.lastError
+}));
 
 // ---------- Paginas ----------
 app.get('/radio', (req, res) => res.sendFile(path.join(__dirname, 'public', 'radio.html')));
@@ -99,25 +203,34 @@ app.post('/api/add', async (req, res) => {
   }
 });
 
-// Controles (aceitam GET ou POST)
+// Controles (aceitam GET ou POST). Cada um corta a musica que esta no stream.
+function cutStream() {
+  skipped = true;
+  killCurrent();
+}
+
 app.all('/api/next', (req, res) => {
   state.current = Math.min(state.current + 1, state.queue.length);
+  cutStream();
   res.json({ ok: true, current: state.current });
 });
 
 app.all('/api/prev', (req, res) => {
   state.current = Math.max(state.current - 1, 0);
+  cutStream();
   res.json({ ok: true, current: state.current });
 });
 
 app.all('/api/stop', (req, res) => {
   state.current = state.queue.length;
+  cutStream();
   res.json({ ok: true });
 });
 
 app.all('/api/clear', (req, res) => {
   state.queue = [];
   state.current = -1;
+  cutStream();
   res.json({ ok: true });
 });
 
